@@ -91,6 +91,7 @@ def _ensure_config():
         'paymongo_backend': '',
         'paymongo_backend_token': '',
         'license_price_peso': 500,
+        'trial_days': 30,
         'log_level': 'INFO',
         'media_video_budget_gb': 2,
         'media_image_budget_gb': 1,
@@ -143,6 +144,7 @@ _ACT_HTML = r'''<!doctype html>
   code{color:var(--accent)}
 </style></head><body><div class="card">
   <h1>LIGHT WORSHIP APP is not activated</h1>
+  {{ trial_notice }}
   <p>This copy needs a license key for <b>this PC</b>. Send your Hardware ID below to your LIGHT WORSHIP APP provider,
      paste the license key you receive, then press <b>Activate device</b>.</p>
   <label>Hardware ID &mdash; send this to your provider</label>
@@ -295,7 +297,41 @@ def wire_license_gate():
     except Exception:
         _lic_state.update({'owner_email': '', 'paymongo_secret': '',
                            'paymongo_publishable': '', 'license_price_peso': 0,
-                           'paymongo_backend': '', 'paymongo_backend_token': ''})
+                           'paymongo_backend': '', 'paymongo_backend_token': '',
+                           'trial_days': 30})
+    try:
+        _lic_state['trial_days'] = max(0, int(_c.get('trial_days') or 30))
+    except Exception:
+        _lic_state['trial_days'] = 30
+
+    import time as _time
+
+    def _trial_state():
+        """Return (days_left, total_days) while a free trial is running, or
+        (0, total) once it has expired, or None when trials are disabled."""
+        _total = int(_lic_state.get('trial_days') or 0)
+        if _total <= 0:
+            return None
+        _tf = os.path.join('data', 'trial.dat')
+        _now = _time.time()
+        _start = None
+        try:
+            with open(_tf) as _f:
+                _hw, _ts = _f.read().split()
+            if _hw == _lic_state['hwid']:
+                _start = float(_ts)
+        except Exception:
+            _start = None
+        if _start is None:
+            try:
+                os.makedirs('data', exist_ok=True)
+                with open(_tf, 'w') as _f:
+                    _f.write('%s %.3f\n' % (_lic_state['hwid'], _now))
+                _start = _now
+            except OSError:
+                return None
+        _left = _total - (_now - _start) / 86400.0
+        return (max(0.0, _left), _total)
 
     try:
         from version import get_version as _gv
@@ -348,34 +384,50 @@ def wire_license_gate():
             '</div>'
         ) % (_price, _price)
 
-    def _page_html(forced_hwid):
+    def _page_html(forced_hwid, trial_notice=''):
         _owner = (_lic_state.get('owner_email') or '').strip()
         _h = forced_hwid or 'UNAVAILABLE'
         return (_ACT_HTML.replace('{{ hwid }}', _h)
                           .replace('{{ owner_email }}', _owner)
-                          .replace('{{ pay_html }}', _pay_section_html()))
+                          .replace('{{ pay_html }}', _pay_section_html())
+                          .replace('{{ trial_notice }}', trial_notice))
 
     @app.before_request
     def _gate():
         if _lic_state['ok']:
             return None
+        _trial = _trial_state()
+        _trial_active = bool(_trial and _trial[0] > 0)
         p = request.path
         if p.startswith('/api/pay/'):
             return None
         if p in ('/api/lic/status', '/api/lic/activate'):
             return None
         if p == '/api/health':
+            if _trial_active:
+                return None
             return jsonify(status='locked', licensed=False, version=_ver)
         if p.startswith('/static') or p in ('/favicon.ico',):
             return None
-        return Response(_page_html(_lic_state['hwid']), status=200, mimetype='text/html')
+        if _trial_active:
+            return None
+        _notice = ''
+        if _trial and _trial[1] > 0:
+            _notice = ('<p style="margin:6px 0 0;color:#ff9f6e">Your %d-day free trial '
+                       'has ended &mdash; activate this copy to keep using it.</p>' % int(_trial[1]))
+        return Response(_page_html(_lic_state['hwid'], _notice), status=200, mimetype='text/html')
 
     @app.route('/api/lic/status')
     def _lic_status():
-        if _lic_state['ok']:
-            return jsonify(licensed=True, hwid=_lic_state['hwid'])
-        return jsonify(licensed=False, hwid=_lic_state['hwid'],
-                       reason='Missing or invalid license.dat for this PC')
+        _trial = _trial_state()
+        _trial_active = bool(_trial and _trial[0] > 0)
+        _j = {'licensed': _lic_state['ok'], 'hwid': _lic_state['hwid'],
+              'trial': _trial_active,
+              'trial_days_left': (round(_trial[0], 1) if _trial else 0),
+              'trial_days_total': (int(_trial[1]) if _trial else 0)}
+        if not _lic_state['ok']:
+            _j['reason'] = 'Missing or invalid license.dat for this PC'
+        return jsonify(**_j)
 
     @app.route('/api/lic/activate', methods=['POST'])
     def _lic_activate():
