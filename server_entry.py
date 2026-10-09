@@ -695,6 +695,12 @@ stream_console_routes.init_app(app)
 import screen_config_routes
 screen_config_routes.init_app(app)
 
+# Fix announcement push to announcement-role outputs (additive; app.pyc
+# untouched). Replaces the compiled 'announcement' socket handler, which only
+# emitted to the console's own channel — announcement.html never got it.
+import announcement_fix
+announcement_fix.init_app(app)
+
 # Register the USB/AUX audio input endpoints (additive; app.pyc untouched).
 # (Module imported pre-monkey_patch above; init here where app exists.)
 audio_input.init_app(app)
