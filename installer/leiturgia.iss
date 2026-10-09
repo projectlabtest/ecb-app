@@ -34,6 +34,7 @@ PrivilegesRequired=admin
 CloseApplications=yes
 RestartApplications=no
 WizardStyle=modern
+SetupIconFile=leiturgia.ico
 Compression=lzma2/max
 SolidCompression=yes
 OutputDir=installer_out
