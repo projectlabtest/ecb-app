@@ -135,7 +135,8 @@ def _enumerate_audio_inputs():
         p = subprocess.Popen(
             [_ffmpeg_exe(), "-hide_banner", "-list_devices", "true",
              "-f", "dshow", "-i", "dummy"],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         out, _ = p.communicate(timeout=15)
     except Exception:
         return []

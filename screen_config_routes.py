@@ -120,6 +120,7 @@ def _kill_profile_processes(profile):
             ["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", enc],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         p.communicate(timeout=20)
         return True
