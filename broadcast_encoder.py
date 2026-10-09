@@ -301,6 +301,12 @@ class _BroadcastEncoder(object):
         and the encoder's video input. Best-effort: the encoder falls back
         to a monitor grab when the feed cannot start.
         """
+        if getattr(sys, 'frozen', False):
+            # The frozen bundle has no projection_feed.py on disk; launching
+            # the exe with a script path would boot a SECOND full server and
+            # crash on the taken port (WinError 10048). Skip: the encoder
+            # falls back to a direct monitor grab when the feed cannot start.
+            return
         global _PREVIEW_PID
         with _PREVIEW_LOCK:
             if _PREVIEW_PID is not None:

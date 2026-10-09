@@ -750,6 +750,38 @@ def _install_update_selfexit(flask_app):
 _install_update_selfexit(app)
 
 
+def _single_instance_or_exit():
+    """Exit quietly (no crash dialog) when another instance already serves
+    our port. A duplicate server can be spawned by a launcher race or a
+    stale helper path; binding would fail with WinError 10048 and pop an
+    unhandled-exception dialog in the windowed build. The already-running
+    instance keeps serving, so there is nothing to do here. --stream
+    children never reach this (they exit at the '--stream' branch above
+    on their own ports).
+    """
+    import socket as _sock
+    try:
+        _port = int(os.environ.get('LEITURGIA_PORT', '5001'))
+    except (TypeError, ValueError):
+        _port = 5001
+    _probe = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+    _probe.settimeout(0.5)
+    try:
+        _taken = _probe.connect_ex(('127.0.0.1', _port)) == 0
+    except Exception:
+        _taken = False
+    finally:
+        try:
+            _probe.close()
+        except Exception:
+            pass
+    if _taken:
+        sys.exit(0)
+
+
+_single_instance_or_exit()
+
+
 def _spawn_stream_child():
     """Launch the dedicated live-stream daemon as a SEPARATE process.
 
@@ -846,4 +878,12 @@ if __name__ == '__main__':
     # the live server on 5001.
     import os as _os
     _port = int(_os.environ.get('LEITURGIA_PORT', '5001'))
-    socketio.run(app, host='0.0.0.0', port=_port, debug=False)
+    # Re-check right before binding: another instance may have started during
+    # our own boot (the early check above runs seconds before this point).
+    _single_instance_or_exit()
+    try:
+        socketio.run(app, host='0.0.0.0', port=_port, debug=False)
+    except OSError:
+        # Lost a last-moment bind race (WinError 10048): the winner serves,
+        # so exit quietly instead of popping a crash dialog.
+        sys.exit(0)
