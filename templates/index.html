@@ -2358,7 +2358,6 @@
       <option value="ivory">Ivory (Light)</option>
       <option value="ocean">Ocean</option>
       <option value="ember">Ember</option>
-      <option value="creation">Creation Grid (Background)</option>
       <option value="custom">Custom (Background Image)</option>
     </select>
   </div>
@@ -7382,8 +7381,7 @@
     const sel = document.getElementById('themeSelect');
     if (!sel) return;
     // Activating an image slot always targets the Custom (Background Image)
-    // theme. "Creation Grid" is a separate built-in option — never clobber it
-    // here, and never map back to the removed 'custom:3' (slot-bound) value.
+    // theme — never map back to the removed 'custom:3' (slot-bound) value.
     sel.value = 'custom';
   }
 
@@ -7407,8 +7405,8 @@
         _syncCustomThemePanel();
         // Push the newly selected theme to the projection right away so the
         // background updates immediately (the theme normally only applies when a
-        // slide is projected). 'creation' is the built-in grid theme; 'custom'
-        // is the uploaded-slot image handled by _pushThemeToProjection.
+        // slide is projected). 'custom' is the uploaded-slot image handled by
+        // _pushThemeToProjection.
         _pushThemeToProjection();
       });
     }
