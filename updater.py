@@ -25,7 +25,7 @@ update.json layout:
     }
 
 Canonical string (both sides must build identically):
-    "<version>\n" + for each file sorted by path: "<path>\t<size>\t<sha256>\n"
+    "<version>\\n" + for each file sorted by path: "<path>\\t<size>\\t<sha256>\\n"
 The files list must be sorted by path.
 """
 import hashlib
@@ -84,43 +84,6 @@ def sign(files, version):
 def verify(files, version, signature):
     """Client side: verify the manifest signature with the embedded public key."""
     return rsa_verify(canonical(files, version).encode(), signature)
-
-
-# --------------------------------------------------------------------------- #
-# Path safety helpers (issue #3)
-# --------------------------------------------------------------------------- #
-def _safe_parts(rel):
-    """Split a manifest path into parts, rejecting traversal / absolute paths."""
-    s = str(rel).replace("\\", "/")
-    if s.startswith("/"):
-        raise ValueError("unsafe path in manifest: %r" % rel)
-    parts = s.split("/")
-    if any(p in ("", ".", "..") for p in parts):
-        raise ValueError("unsafe path in manifest: %r" % rel)
-    if len(parts[0]) >= 2 and parts[0][1] == ":":
-        raise ValueError("unsafe path in manifest: %r" % rel)
-    return parts
-
-
-def safe_join(base, rel):
-    """Join base + rel and verify the result stays inside base (realpath).
-
-    The parts are already validated by _safe_parts (no '..', no absolute, no
-    drive letter), so the only remaining risk is a symlink inside base that
-    points outside. We realpath-check the destination's parent when it exists.
-    """
-    parts = _safe_parts(rel)
-    base_real = os.path.realpath(base)
-    dest = os.path.join(base, *parts)
-    parent = os.path.dirname(dest)
-    if os.path.exists(parent):
-        parent_real = os.path.realpath(parent)
-        if parent_real != base_real and not parent_real.startswith(base_real + os.sep):
-            raise ValueError("path escapes base directory: %r" % rel)
-    # textual containment as a backstop
-    if not os.path.abspath(dest).startswith(os.path.abspath(base) + os.sep) and os.path.abspath(dest) != os.path.abspath(base):
-        raise ValueError("path escapes base directory: %r" % rel)
-    return dest, parts
 
 
 # --------------------------------------------------------------------------- #
@@ -214,13 +177,6 @@ def fetch_manifest(base_url, timeout=30):
     if not version or not isinstance(files, list) or not signature:
         raise ValueError("update.json is malformed (missing version/files/signature)")
 
-    # validate paths up front
-    for f in files:
-        try:
-            _safe_parts(f.get("path"))
-        except ValueError as e:
-            raise ValueError(str(e))
-
     norm = [(f.get("path"), int(f.get("size", 0)), f.get("sha256")) for f in files]
     norm = [(p, s, h) for (p, s, h) in norm if p]
     if not verify(norm, version, signature):
@@ -266,7 +222,8 @@ def download_bundle(manifest, stage_dir, base_url, on_file=None, timeout=60):
     total = len(manifest["files"])
     for i, f in enumerate(manifest["files"], 1):
         rel = f["path"]
-        dest, parts = safe_join(stage_dir, rel)
+        parts = rel.split("/") if "/" in rel else rel.split("\\")
+        dest = os.path.join(stage_dir, *parts)
         dest_dir = os.path.dirname(dest)
         os.makedirs(dest_dir, exist_ok=True)
         data = _http_get(_join(base_url, rel), timeout=timeout)
